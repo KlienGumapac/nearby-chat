@@ -13,18 +13,15 @@ const io = socketIo(server, {
   }
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Store active users and their data
 const activeUsers = new Map();
 const userChats = new Map();
 
-// Calculate distance between two points using Haversine formula
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Earth's radius in kilometers
+  const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = 
@@ -32,10 +29,9 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
     Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c; // Distance in kilometers
+  return R * c; 
 }
 
-// Find nearby users within specified radius (in meters)
 function findNearbyUsers(userId, userLat, userLon, radius = 500) {
   const nearbyUsers = [];
   
@@ -44,7 +40,7 @@ function findNearbyUsers(userId, userLat, userLon, radius = 500) {
       const distance = calculateDistance(
         userLat, userLon, 
         userData.location.lat, userData.location.lon
-      ) * 1000; // Convert to meters
+      ) * 1000; 
       
       if (distance <= radius) {
         nearbyUsers.push({
@@ -60,11 +56,9 @@ function findNearbyUsers(userId, userLat, userLon, radius = 500) {
   return nearbyUsers;
 }
 
-// Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // User joins with username and location
   socket.on('user-join', (data) => {
     const { username, location } = data;
     
@@ -77,19 +71,17 @@ io.on('connection', (socket) => {
 
     console.log(`User ${username} joined at location:`, location);
     
-    // Send current online users to the new user
     const currentUsers = Array.from(activeUsers.entries())
       .filter(([id, userData]) => id !== socket.id && userData.location)
       .map(([id, userData]) => ({
         id: id,
         username: userData.username,
         location: userData.location,
-        distance: 0 // Will be calculated when they scan
+        distance: 0 
       }));
     
     socket.emit('current-users', currentUsers);
     
-    // Notify other users about new user
     socket.broadcast.emit('user-joined', {
       id: socket.id,
       username: username,
@@ -97,7 +89,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // User requests nearby users
   socket.on('scan-users', (userLocation) => {
     const userData = activeUsers.get(socket.id);
     if (userData && userLocation) {
@@ -111,7 +102,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Send message to specific user
   socket.on('send-message', (data) => {
     const { toUserId, message } = data;
     const fromUser = activeUsers.get(socket.id);
@@ -125,22 +115,18 @@ io.on('connection', (socket) => {
         timestamp: new Date()
       };
 
-      // Store message in chat history
       const chatKey = [socket.id, toUserId].sort().join('-');
       if (!userChats.has(chatKey)) {
         userChats.set(chatKey, []);
       }
       userChats.get(chatKey).push(messageData);
 
-      // Send to recipient
       socket.to(toUserId).emit('receive-message', messageData);
       
-      // Send confirmation to sender
       socket.emit('message-sent', messageData);
     }
   });
 
-  // Get chat history
   socket.on('get-chat-history', (otherUserId) => {
     const chatKey = [socket.id, otherUserId].sort().join('-');
     const chatHistory = userChats.get(chatKey) || [];
@@ -150,14 +136,12 @@ io.on('connection', (socket) => {
     });
   });
 
-  // User location update
   socket.on('update-location', (location) => {
     const userData = activeUsers.get(socket.id);
     if (userData) {
       userData.location = location;
       activeUsers.set(socket.id, userData);
       
-      // Notify other users about location update
       socket.broadcast.emit('user-location-updated', {
         id: socket.id,
         location: location
@@ -165,29 +149,24 @@ io.on('connection', (socket) => {
     }
   });
 
-  // User disconnection
   socket.on('disconnect', () => {
     const userData = activeUsers.get(socket.id);
     if (userData) {
       console.log(`User ${userData.username} disconnected`);
       
-      // Remove user from active users
       activeUsers.delete(socket.id);
       
-      // Remove user's chat history
       userChats.forEach((chat, key) => {
         if (key.includes(socket.id)) {
           userChats.delete(key);
         }
       });
       
-      // Notify other users about disconnection
       socket.broadcast.emit('user-disconnected', socket.id);
     }
   });
 });
 
-// API Routes
 app.get('/api/users', (req, res) => {
   const users = Array.from(activeUsers.entries()).map(([id, data]) => ({
     id: id,
